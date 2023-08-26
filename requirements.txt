@@ -21,3 +21,5 @@ psutil
 
 # For saving the model in ONNX format
 optimum["onnxruntime"]
+onnxruntime
+onnx

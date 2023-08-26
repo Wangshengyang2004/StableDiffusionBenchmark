@@ -12,7 +12,11 @@ from tqdm import tqdm  # Importing tqdm for the progress bar
 import logging
 import pandas as pd
 from asdff import AdPipeline
+import json
+import os
+import datetime
 
+now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 # Function to setup logging
 def setup_logging():
     logging.basicConfig(level=logging.INFO,
@@ -33,10 +37,18 @@ def benchmark_model(pipe, prompts, negative_prompts):
     start_time = time.time()
 
     # Wrapping the loop with tqdm for a progress bar
+    i = 1
     for prompt, negative_prompt in tqdm(zip(prompts, negative_prompts), total=len(prompts)):
         logging.info(f"Generating image for prompt: {prompt}, negative_prompt: {negative_prompt}")
-        # Uncomment this line in your environment
-        images = pipe(common={"prompt": prompt, "negative_prompt": negative_prompt}).images
+        
+        image = pipe(
+            prompt = prompts[i],
+            negative_prompt = negative_prompts[i],
+            height = 512,
+            width = 512,
+        ).images[0]
+        save_image(image, f"image_{i}.png")
+        i += 1
 
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -51,20 +63,28 @@ def get_gpu_memory():
     gpus = GPUtil.getGPUs()
     return gpus[0].memoryUsed  # Assuming one GPU
 
-# Function for the actual model benchmark
-def benchmark_model(pipe, num_images=1):
-    start_time = time.time()
+# Function to save image
+def save_image(image, image_name):
     
-    # Perform the actual model operation here
-    # Uncomment this line in your environment
-    # images = pipe(["your prompt here"] * num_images).images
-    
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    
-    gpu_memory = get_gpu_memory()
-    
-    return elapsed_time, gpu_memory
+    save_folder = f"output/{now}"
+    os.makedirs(save_folder, exist_ok=True)
+    image_path = os.path.join(save_folder, image_name)
+    image.save(image_path, "PNG")
+    logging.info(f"Generation Complete. Image saved to {image_path}")
+
+# Function to generate report
+def generate_report(elapsed_time, gpu_memory):
+    image_resolution = (512, 512)
+    report_data = {
+        "Elapsed Time": f"{elapsed_time} seconds",
+        "GPU Memory Used": f"{gpu_memory} MB",
+        "Score": elapsed_time / gpu_memory,
+        "Image Resolution": f"{image_resolution[0]} x {image_resolution[1]}"
+    }
+    for key, value in report_data.items():
+        print(f"{key}: {value}")
+    with open('benchmark_report.json', 'w') as f:
+        json.dump(report_data, f)
 
 # Main function
 def main(args):
@@ -99,8 +119,6 @@ def main(args):
     
     # Enable CPU Offload if enabled
     if args.sequential_cpu_offload:
-        # Placeholder for actual CPU offload function
-        # Uncomment and implement this in your environment
         pipe.enable_sequential_cpu_offload()
     
     # Enable Sliced VAE decode if enabled
@@ -111,16 +129,12 @@ def main(args):
     if args.model_cpu_offload:
         pipe.enable_model_cpu_offload()
     
+    prompts, negative_prompts = read_prompts_from_csv(args.dataset)
     # Run the benchmark
-    elapsed_time, gpu_memory = benchmark_model(pipe, args.num_images)
+    elapsed_time, gpu_memory = benchmark_model(pipe, prompts=prompts, negative_prompts=negative_prompts)
     
-    # Compute a score (this is just a placeholder; you can define your own scoring metric)
-    score = elapsed_time / gpu_memory
-    
-    # Generate a report (this is just a placeholder; you can define your own report format)
-    print(f"Elapsed Time: {elapsed_time} seconds")
-    print(f"GPU Memory Used: {gpu_memory} MB")
-    print(f"Score: {score}")
+    # Compute a score and generate the report
+    generate_report(elapsed_time, gpu_memory)
 
 if __name__ == "__main__":
     setup_logging()  # Setting up logging
@@ -143,7 +157,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--num_images", default=20, type=int, help="Number of images to generate for the benchmark")
     
-    parser.add_argument("--dataset", default=None, type=str, help="Path to the dataset CSV file containing prompts and negative_prompts")
+    parser.add_argument("--dataset", default="dataset.csv", type=str, help="Path to the dataset CSV file containing prompts and negative_prompts")
     
     args = parser.parse_args()
     
