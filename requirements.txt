@@ -1,0 +1,23 @@
+
+# PyTorch and related libraries (CUDA 11.8)
+torch==2.0.1+cu118
+torchvision==0.9.0+cu118
+torchaudio
+
+# Diffusers library (version number is a placeholder; you should check the correct version)
+diffusers
+
+# Token Merging library (ToMeSD) (version number is a placeholder; you should check the correct version)
+tomesd
+
+# For measuring GPU usage
+gputil
+
+# For command-line argument parsing
+argparse
+
+# For additional utilities like time measurement
+psutil
+
+# For saving the model in ONNX format
+optimum["onnxruntime"]
