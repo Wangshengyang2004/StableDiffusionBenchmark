@@ -1,6 +1,5 @@
 # Importing necessary libraries (Note: You'll need to install these in your environment)
 import torch
-from diffusers import StableDiffusionPipeline
 from optimum.onnxruntime import ORTStableDiffusionPipeline  # For ONNX Runtime support
 import tomesd
 import argparse
@@ -8,7 +7,10 @@ import time
 from diffusers.utils import logging
 from tqdm import tqdm  # Importing tqdm for the progress bar
 from asdff import AdPipeline
-from diffusers import DPMSolverMultistepScheduler
+from diffusers import (StableDiffusionPipeline,
+                       DPMSolverMultistepScheduler,
+                       UniPCMultistepScheduler,
+                       EulerAncestralDiscreteScheduler)
 from  utils import *
 
 logging.set_verbosity_info()
@@ -21,8 +23,10 @@ def benchmark_model(pipe, prompts, negative_prompts):
     logging.info("Starting the benchmark...")
     start_time = time.time()
 
-    # Wrapping the loop with tqdm for a progress bar
+    #initialize the parameters
     i = 1
+    generator = torch.manual_seed(0)
+    # Wrapping the loop with tqdm for a progress bar
     for prompt, negative_prompt in tqdm(zip(prompts, negative_prompts), total=len(prompts)):
         logging.info(f"Generating image for prompt: {prompt}, negative_prompt: {negative_prompt}")
         
@@ -32,6 +36,7 @@ def benchmark_model(pipe, prompts, negative_prompts):
             height = 512,
             width = 512,
             num_inference_steps = 20,
+            generator = generator
         ).images[0]
         save_image(image, f"image_{i}.png")
         i += 1
@@ -70,7 +75,14 @@ def main(args):
         ).to(device)
     
     # Use dpm 2m karras By default
-    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    if args.schedule == "Kerras":
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    elif args.schedule == "UniPC":
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+    else:
+        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+
+
     pipe.safety_checker = None
     # Apply Token Merging (ToMe) if enabled
     if args.token_merging:
@@ -122,6 +134,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--dataset", default="dataset.csv", type=str, help="Path to the dataset CSV file containing prompts and negative_prompts")
     
+    parser.add_argument("--schedule", default="Kerras", type=str, help="Schedule to use for the benchmark")
     args = parser.parse_args()
     
     # Read prompts and negative prompts from the dataset if specified
