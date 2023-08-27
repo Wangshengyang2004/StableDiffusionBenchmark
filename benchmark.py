@@ -1,4 +1,3 @@
-
 # Importing necessary libraries (Note: You'll need to install these in your environment)
 import torch
 from diffusers import StableDiffusionPipeline
@@ -6,30 +5,16 @@ from optimum.onnxruntime import ORTStableDiffusionPipeline  # For ONNX Runtime s
 import tomesd
 import argparse
 import time
-import psutil
-import GPUtil
+from diffusers.utils import logging
 from tqdm import tqdm  # Importing tqdm for the progress bar
-import logging
-import pandas as pd
 from asdff import AdPipeline
-import json
-import os
-import datetime
+from diffusers import DPMSolverMultistepScheduler
+from  utils import *
 
-now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-# Function to setup logging
-def setup_logging():
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s [%(levelname)s] %(message)s",
-                        datefmt="%Y-%m-%d %H:%M:%S")
-
-# Function to read prompts from a CSV file
-def read_prompts_from_csv(csv_path):
-    logging.info(f"Reading dataset from {csv_path}")
-    df = pd.read_csv(csv_path)
-    prompts = df['prompt'].dropna().tolist()
-    negative_prompts = df['negative_prompt'].dropna().tolist()
-    return prompts, negative_prompts
+logging.set_verbosity_info()
+logger = logging.get_logger("diffusers")
+logger.info("INFO")
+logger.warning("WARN")
 
 # Function for the actual model benchmark
 def benchmark_model(pipe, prompts, negative_prompts):
@@ -46,6 +31,7 @@ def benchmark_model(pipe, prompts, negative_prompts):
             negative_prompt = negative_prompts[i],
             height = 512,
             width = 512,
+            num_inference_steps = 20,
         ).images[0]
         save_image(image, f"image_{i}.png")
         i += 1
@@ -58,33 +44,7 @@ def benchmark_model(pipe, prompts, negative_prompts):
     
     return elapsed_time, gpu_memory
 
-# Function to measure GPU memory
-def get_gpu_memory():
-    gpus = GPUtil.getGPUs()
-    return gpus[0].memoryUsed  # Assuming one GPU
 
-# Function to save image
-def save_image(image, image_name):
-    
-    save_folder = f"output/{now}"
-    os.makedirs(save_folder, exist_ok=True)
-    image_path = os.path.join(save_folder, image_name)
-    image.save(image_path, "PNG")
-    logging.info(f"Generation Complete. Image saved to {image_path}")
-
-# Function to generate report
-def generate_report(elapsed_time, gpu_memory):
-    image_resolution = (512, 512)
-    report_data = {
-        "Elapsed Time": f"{elapsed_time} seconds",
-        "GPU Memory Used": f"{gpu_memory} MB",
-        "Score": elapsed_time / gpu_memory,
-        "Image Resolution": f"{image_resolution[0]} x {image_resolution[1]}"
-    }
-    for key, value in report_data.items():
-        print(f"{key}: {value}")
-    with open('benchmark_report.json', 'w') as f:
-        json.dump(report_data, f)
 
 # Main function
 def main(args):
@@ -109,6 +69,9 @@ def main(args):
             use_safetensors=args.use_safetensors
         ).to(device)
     
+    # Use dpm 2m karras By default
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    pipe.safety_checker = None
     # Apply Token Merging (ToMe) if enabled
     if args.token_merging:
         tomesd.apply_patch(pipe, ratio=args.token_merging_ratio)
@@ -155,7 +118,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--use_onnx", action="store_true", help="Enable ONNX Runtime support")
     
-    parser.add_argument("--num_images", default=20, type=int, help="Number of images to generate for the benchmark")
+    parser.add_argument("--num_images", default=50, type=int, help="Number of images to generate for the benchmark")
     
     parser.add_argument("--dataset", default="dataset.csv", type=str, help="Path to the dataset CSV file containing prompts and negative_prompts")
     
